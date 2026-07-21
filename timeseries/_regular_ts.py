@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import colorsys
+from scipy import signal
 
 
 class regular_ts:
@@ -101,49 +104,7 @@ class regular_ts:
             df_new = df_nonshifted.shift(neg_shift)
             pass
 
-        return df_new.copy()
-
-    def plot_tests(self, fig=None, ax=None, title=None, plot_all=True) -> plt.Figure:
-
-        # init
-        df = self._shift_lossless(r_ts=self)
-        t = df.index.to_numpy()
-        mean = df.mean(axis=1)
-        q05 = df.quantile(0.05, axis=1)
-        q95 = df.quantile(0.95, axis=1)
-        ylabel = self.name
-
-        # generating new title if needed
-        if title is None:
-            title = f"{self.name} Distribution vs Time"
-
-        # initiating new plot is needed
-        if fig==None or ax==None:
-            fig, ax = plt.subplots(figsize=(10, 5))
-
-        # ── Individual tests ─────────────────────────────────────────────────
-        if plot_all:
-            for i, col in enumerate(df.columns):
-                ax.plot(t, df[col], color="steelblue", alpha=0.3, linewidth=0.8,
-                        label="Individual tests" if i == 0 else "")
-
-        # ── Quantile band ────────────────────────────────────────────────────
-        ax.fill_between(t, q05, q95, color="steelblue", alpha=0.15,
-                        label="5th–95th percentile")
-
-        # ── Mean ─────────────────────────────────────────────────────────────
-        ax.plot(t, mean, color="navy", linewidth=2, label="Mean")
-        ax.plot(t, q05, color="darkorange", linewidth=1.2, linestyle="--", label="5th quantile")
-        ax.plot(t, q95, color="darkorange", linewidth=1.2, linestyle="--", label="95th quantile")
-
-        ax.set_xlabel("Time")
-        ax.set_ylabel(ylabel)
-        ax.set_title(title)
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-        return fig, ax
+        return df_new.dropna().copy()
 
 
     # algebraic operations
@@ -671,4 +632,194 @@ class regular_ts:
 
     # representation
     def __repr__(self):
-        return f"regular_ts: {self.name}\nData Shape:\n{self.data.shape}\nShift: {self.shift}\nTime Step (dt): {self.dt}"
+        return (f"regular_ts: {self.name}\nData Shape:\n{self.data.shape}\nShift: {self.shift}\nTime Step (dt): "
+                f"{self.dt}")
+
+    def plot_distribution(self, fig=None, ax=None, title=None, plot_all=True,
+                          figsize=(10, 5), color="steelblue"):
+        """
+        Plot time-domain distribution with consistent color shading.
+
+        Parameters
+        ----------
+        color : str or hex
+            Base color. Shades are derived automatically:
+            - Mean             → darkest
+            - Quantile lines   → moderate
+            - Individual ts    → light
+            - Shaded area      → lightest
+        """
+        # ── Derive shades from base color ────────────────────────────────────
+        c_mean = self._adjust_lightness(color, 0.5)  # darkest
+        c_quantile = self._adjust_lightness(color, 0.7)  # moderate
+        c_individual = self._adjust_lightness(color, 1.3)  # light
+        c_area = self._adjust_lightness(color, 1.6)  # lightest
+
+        # ── Init ─────────────────────────────────────────────────────────────
+        df = self._shift_lossless(r_ts=self)
+        t = df.index.to_numpy()
+        mean = df.mean(axis=1)
+        q05 = df.quantile(0.05, axis=1)
+        q95 = df.quantile(0.95, axis=1)
+        ylabel = self.name
+
+        if title is None:
+            title = f"{self.name} Distribution vs Time"
+
+        if fig is None or ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+
+        # ── Individual trajectories (light) ──────────────────────────────────
+        if plot_all:
+            for i, col in enumerate(df.columns):
+                ax.plot(t, df[col], color=c_individual, alpha=0.6, linewidth=0.8,
+                        label="Individual ts" if i == 0 else "")
+
+        # ── Shaded quantile area (lightest) ──────────────────────────────────
+        ax.fill_between(t, q05, q95, color=c_area, alpha=1.0,
+                        label="5th–95th percentile")
+
+        # ── Quantile lines (moderate) ─────────────────────────────────────────
+        ax.plot(t, q05, color=c_quantile, linewidth=1.2, linestyle="--", label="5th quantile")
+        ax.plot(t, q95, color=c_quantile, linewidth=1.2, linestyle="--", label="95th quantile")
+
+        # ── Mean (darkest) ────────────────────────────────────────────────────
+        ax.plot(t, mean, color=c_mean, linewidth=2, label="Mean")
+
+        ax.set_xlabel("Time")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig, ax
+
+    def _adjust_lightness(self, color, amount):
+        """
+        amount < 1 → darker
+        amount > 1 → lighter
+        """
+        try:
+            c = mcolors.cnames[color]
+        except KeyError:
+            c = color
+        c = colorsys.rgb_to_hls(*mcolors.to_rgb(c))
+        return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
+
+
+    def plot_bode_distribution(self, fig=None, ax=None, title=None,
+                               figsize=(10, 5), color="steelblue"):
+        """
+        Plot Bode diagram with consistent color shading.
+
+        Parameters
+        ----------
+        color : str or hex
+            Base color. Shades are derived automatically:
+            - Mean          → darkest
+            - Quantile lines → moderate
+            - Individual ts  → light
+            - Shaded area    → lightest
+        """
+
+        # ── Derive shades from base color ────────────────────────────────────
+        c_mean = self._adjust_lightness(color, 0.5)  # darkest
+        c_quantile = self._adjust_lightness(color, 0.7)  # moderate
+        c_individual = self._adjust_lightness(color, 1.3)  # light
+        c_area = self._adjust_lightness(color, 1.6)  # lightest
+
+        # ── Init ─────────────────────────────────────────────────────────────
+        df = self._shift_lossless(r_ts=self)
+        dt = self.dt
+        N = df.shape[0]
+        if title is None:
+            title = f"Bode Plot of: {self.name}"
+
+        if fig is None or ax is None:
+            fig, ax = plt.subplots(nrows=2, ncols=1, figsize=figsize)
+
+        ax_mag = ax[0]
+        ax_phase = ax[1]
+
+        mags = {}
+        phases = {}
+
+        # ── Compute FFT per column ───────────────────────────────────────────
+        for col in df.columns:
+            y = df[col].to_numpy()
+            Y = np.fft.rfft(y - y.mean())
+            freqs = np.fft.rfftfreq(N, d=dt)
+            Y, freqs = Y[1:], freqs[1:]
+
+            mags[col] = 20 * np.log10(np.abs(Y))
+            phases[col] = np.unwrap(np.angle(Y)) * 180 / np.pi
+
+        df_mag = pd.DataFrame(mags, index=freqs)
+        df_phase = pd.DataFrame(phases, index=freqs)
+
+        # ── Plot ─────────────────────────────────────────────────────────────
+        for df_plot, ax, ylabel in [
+            (df_mag, ax_mag, "Magnitude (dB)"),
+            (df_phase, ax_phase, "Phase (degrees)")
+        ]:
+            mean = df_plot.mean(axis=1)
+            q05 = df_plot.quantile(0.05, axis=1)
+            q95 = df_plot.quantile(0.95, axis=1)
+
+            # Individual trajectories
+            for i, col in enumerate(df_plot.columns):
+                ax.semilogx(freqs, df_plot[col], color=c_individual, alpha=0.6,
+                            linewidth=0.8, label="Individual ts" if i == 0 else "")
+
+            # Shaded quantile area (lightest)
+            ax.fill_between(freqs, q05, q95, color=c_area, alpha=1.0,
+                            label="5th–95th percentile")
+
+            # Quantile lines (moderate)
+            ax.semilogx(freqs, q05, color=c_quantile, linewidth=1.2,
+                        linestyle="--", label="5th quantile")
+            ax.semilogx(freqs, q95, color=c_quantile, linewidth=1.2,
+                        linestyle="--", label="95th quantile")
+
+            # Mean (darkest)
+            ax.semilogx(freqs, mean, color=c_mean, linewidth=2, label="Mean")
+
+            ax.set_xlabel("Frequency (Hz)")
+            ax.set_ylabel(ylabel)
+            ax.legend(fontsize=8)
+            ax.grid(True, which="both", alpha=0.3)
+
+        ax_mag.set_title(title)
+        return fig, [ax_mag, ax_phase]
+
+
+    def lowpass_filter(self, cutoff_hz: float, order: int = 4):
+
+        # init
+        df = self._shift_lossless(r_ts=self)
+        dt = self.dt
+        fs = 1.0 / dt
+        nyquist = fs / 2.0
+        df_filtered = pd.DataFrame(columns=df.columns, index=df.index)
+
+        assert cutoff_hz < nyquist, (f"cutoff_hz ({cutoff_hz} Hz) must be below "
+                                     f"Nyquist frequency ({nyquist:.2f} Hz)")
+
+        normalized_cutoff = cutoff_hz / nyquist
+
+        # design Butterworth filter
+        b, a = signal.butter(order, normalized_cutoff, btype="low")
+
+        # apply filter to each column
+        for col in df_filtered.columns:
+            df_filtered[col] = signal.filtfilt(b, a, df[col].to_numpy())
+
+        # return a new regular_ts with filtered data
+        new_regular_ts = regular_ts(name=self.name)
+        new_regular_ts.data = df_filtered
+        new_regular_ts.dt = self.dt
+        new_regular_ts.shift = 0
+
+        # eof
+        return new_regular_ts

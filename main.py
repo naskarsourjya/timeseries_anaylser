@@ -79,8 +79,29 @@ t19 = 3.5 / ts_dummy2.z_shift(shift=-1)
 t20 = np.array([[3.5]]) / ts_dummy2.z_shift(shift=-1)
 print(t20)
 
-# plots
-_, _= ts_dummy2.plot_tests(plot_all=False)
+# frequency response
+np.random.seed(42)
+fs = 100
+t  = np.arange(0, 2, 1 / fs)
+
+df = pd.DataFrame(
+    {f"test{i+1}": (np.sin(2 * np.pi * 2 * t) +
+                    0.5 * np.sin(2 * np.pi * 10 * t) +
+                    0.1 * np.random.randn(len(t)))
+    for i in range(10)},
+    index=t)
+
+ts_dummy3 = regular_ts('Dummy Time series 3')
+ts_dummy3.data = df
+ts_dummy3.dt=1 / fs
+
+_, _= ts_dummy3.plot_distribution()
+#plt.show()
+
+#plt.show()
+fig3, ax3=ts_dummy3.plot_bode_distribution()
+ts_dummy3_filtered = ts_dummy3.lowpass_filter(cutoff_hz=10)
+_, _= ts_dummy3_filtered.plot_bode_distribution(color='green', fig=fig3, ax=ax3, title="Tuning Filter")
 plt.show()
 pass
 
