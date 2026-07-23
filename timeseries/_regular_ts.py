@@ -74,7 +74,17 @@ class regular_ts:
         new_regular_ts.shift = shift
         new_regular_ts.dt = self.dt
 
-        return new_regular_ts
+        # shifting losslessly
+        shifted_data = self._shift_lossless(r_ts=new_regular_ts)
+
+        # creating new shifted object
+        shifted_regular_ts = regular_ts(name=self.name)
+        shifted_regular_ts.data = shifted_data
+        shifted_regular_ts.shift = 0
+        shifted_regular_ts.dt = self.dt
+
+        # eof
+        return shifted_regular_ts
 
 
     def _shift_lossless(self, r_ts):
@@ -91,7 +101,6 @@ class regular_ts:
                                   index=df_nan_index)
             df_nonshifted = pd.concat([df, df_nan])
             df_new = df_nonshifted.shift(neg_shift)
-            pass
 
         elif neg_shift==0:
             df_new = df
@@ -102,7 +111,6 @@ class regular_ts:
                                   index=df_nan_index)
             df_nonshifted = pd.concat([df_nan, df])
             df_new = df_nonshifted.shift(neg_shift)
-            pass
 
         return df_new.dropna().copy()
 
