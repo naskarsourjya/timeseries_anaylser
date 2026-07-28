@@ -1,3 +1,8 @@
+# part of timeseries_anaylser
+# Class to efficiently store and manage time-series data. Based in Python.
+# by Sourjya Naskar
+# Github: https://github.com/naskarsourjya/timeseries_anaylser
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
